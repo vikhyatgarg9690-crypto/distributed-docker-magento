@@ -1,0 +1,96 @@
+services:
+
+  nginx:
+    image: nginx:1.26
+    container_name: magento-nginx
+    ports:
+      - "8080:80"
+      - "443:443"
+    volumes:
+      - ./src:/var/www/html
+      - ./nginx/00-default.conf:/etc/nginx/conf.d/00-default.conf
+    depends_on:
+      - php
+    networks:
+      - magento
+
+  php:
+    build:
+      context: ./php
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    image: magento-php:8.2-fpm
+    container_name: magento-php
+    working_dir: /var/www/html
+    user: "${UID:-1000}:${GID:-1000}"
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./src:/var/www/html
+      - ./php/php.ini:/usr/local/etc/php/conf.d/magento.ini:ro
+      - ./php/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+    networks:
+      - magento
+
+  mysql:
+    image: mysql:8.0
+    container_name: magento-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: magento
+      MYSQL_USER: magento
+      MYSQL_PASSWORD: magento
+    command:
+      --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/conf.d/magento.cnf:ro
+    networks:
+      - magento
+
+  redis:
+    image: redis:7-alpine
+    container_name: magento-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - magento
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.0
+    container_name: magento-opensearch
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      #plugins.security.disabled: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    networks:
+      - magento
+
+volumes:
+  mysql_data:
+  redis_data:
+  opensearch_data:
+
+networks:
+  magento:
+    driver: bridge
